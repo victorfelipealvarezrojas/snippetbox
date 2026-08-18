@@ -7,7 +7,11 @@ import (
 	"net/http"
 	"os"
 
-	_ "github.com/go-sql-driver/mysql" // New import
+	// no usa directamente nada del paquete mysql. habla con la base a través de database/sql, no del driver.
+	//Pero el driver sí tiene que cargarse, porque su función init() es la que lo registra en database/sql.
+	// Sin esa registración, sql.Open("mysql", ...) no sabría qué driver usar.
+	_ "github.com/go-sql-driver/mysql"
+	"github.com/valvarez/snippetbox/internal/models"
 )
 
 type config struct {
@@ -16,7 +20,8 @@ type config struct {
 }
 
 type application struct {
-	logger *slog.Logger
+	logger   *slog.Logger
+	snippets *models.SnippetModel
 }
 
 func main() {
@@ -31,20 +36,17 @@ func main() {
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 
-	// To keep the main() function tidy I've put the code for creating a connection
-	// pool into the separate openDB() function below. We pass openDB() the DSN
-	// from the command-line flag.
 	db, err := openDB(*dsn)
 	if err != nil {
 		logger.Error(err.Error())
 		os.Exit(1)
 	}
-	// We also defer a call to db.Close(), so that the connection pool is closed
-	// before the main() function exits.
+
 	defer db.Close()
 
 	app := &application{
-		logger: logger,
+		logger:   logger,
+		snippets: &models.SnippetModel{DB: db},
 	}
 
 	logger.Info("starting server", "addr", cfg.addr)
@@ -58,6 +60,9 @@ func main() {
 
 }
 
+// Lsql.Open() no crea ninguna conexión, todo lo que hace es inicializar
+// para uso futuro. Las conexiones reales a la base de datos se establecen de forma perezosa, a medida que
+// cuando sea necesario por primera vez. para verificar que todo esté configurado correctamente se usa el método db.Ping()
 func openDB(dsn string) (*sql.DB, error) {
 	db, err := sql.Open("mysql", dsn)
 	if err != nil {

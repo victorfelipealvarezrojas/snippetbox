@@ -7,10 +7,16 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"time"
 
 	// no usa directamente nada del paquete mysql. habla con la base a través de database/sql, no del driver.
 	//Pero el driver sí tiene que cargarse, porque su función init() es la que lo registra en database/sql.
 	// Sin esa registración, sql.Open("mysql", ...) no sabría qué driver usar.
+	// New import
+
+	"github.com/alexedwards/scs/mysqlstore"
+	"github.com/alexedwards/scs/v2" // New import
+
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/valvarez/snippetbox/internal/models"
 )
@@ -21,9 +27,10 @@ type config struct {
 }
 
 type application struct {
-	logger        *slog.Logger
-	snippets      *models.SnippetModel
-	templateCache map[string]*template.Template
+	logger         *slog.Logger
+	snippets       *models.SnippetModel
+	templateCache  map[string]*template.Template
+	sessionManager *scs.SessionManager
 }
 
 func main() {
@@ -52,10 +59,19 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Usamos la función scs.New() para inicializar un nuevo gestor de sesiones. Luego,
+	// lo configuramos para que use nuestra base de datos MySQL como almacén de sesiones y establecemos una
+	// duración de 12 horas (para que las sesiones caduquen automáticamente 12 horas
+	// después de su creación).
+	sessionManager := scs.New()
+	sessionManager.Store = mysqlstore.New(db)
+	sessionManager.Lifetime = 12 * time.Hour
+
 	app := &application{
-		logger:        logger,
-		snippets:      &models.SnippetModel{DB: db},
-		templateCache: templateCache,
+		logger:         logger,
+		snippets:       &models.SnippetModel{DB: db},
+		templateCache:  templateCache,
+		sessionManager: sessionManager,
 	}
 
 	logger.Info("starting server", "addr", cfg.addr)

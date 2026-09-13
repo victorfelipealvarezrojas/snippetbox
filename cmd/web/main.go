@@ -15,7 +15,7 @@ import (
 	// New import
 
 	"github.com/alexedwards/scs/mysqlstore"
-	"github.com/alexedwards/scs/v2" // New import
+	"github.com/alexedwards/scs/v2"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/valvarez/snippetbox/internal/models"

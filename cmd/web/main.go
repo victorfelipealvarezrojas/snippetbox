@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/tls"
 	"database/sql"
 	"flag"
 	"html/template"
@@ -74,15 +75,30 @@ func main() {
 		sessionManager: sessionManager,
 	}
 
-	logger.Info("starting server", "addr", cfg.addr)
+	// Inicializa una estructura tls.Config para almacenar la configuración TLS no predeterminada que
+	// queremos que use el servidor. En este caso, lo único que estamos cambiando
+	// es el valor de las preferencias de curva, para que solo se utilicen curvas elípticas con
+	// implementaciones de ensamblador.
+	tlsConfig := &tls.Config{
+		CurvePreferences: []tls.CurveID{tls.X25519, tls.CurveP256},
+	}
 
-	// http.Handler es una interface: type Handler interface { ServeHTTP(ResponseWriter, *Request) }
-	// mux la satisface porque tiene ese método(ServeHTTP); es lo que ListenAndServe espera como 2º argumento
-	err = http.ListenAndServe(cfg.addr, app.routes())
+	srv := &http.Server{
+		Addr:           cfg.addr,
+		Handler:        app.routes(),
+		ErrorLog:       slog.NewLogLogger(logger.Handler(), slog.LevelError),
+		MaxHeaderBytes: 524288, // controlar el número máximo de bytes que el servidor leerá al analizar los encabezados de la solicitud
+		TLSConfig:      tlsConfig,
+		IdleTimeout:    time.Minute,      //  IdleTimeout en 1 minuto, lo que significa que todas las conexiones persistentes se cerrarán automáticamente después de 1 minuto de inactividad.
+		ReadTimeout:    5 * time.Second,  // ReadTimeout a 5 segundos. Esto significa que si los encabezados o el cuerpo de la solicitud aún se están leyendo 5 segundos después de que se haya aceptado la solicitud por primera vez,cerrará la conexión subyacente.
+		WriteTimeout:   10 * time.Second, // WriteTimeout cerrará la conexión subyacente si nuestro servidor intenta escribir en ella después de un período determinado (en nuestro código, 10 segundos)
+	}
 
+	logger.Info("starting server", "addr", srv.Addr)
+
+	err = srv.ListenAndServeTLS("./tls/cert.pem", "./tls/key.pem")
 	logger.Error(err.Error())
 	os.Exit(1)
-
 }
 
 // Lsql.Open() no crea ninguna conexión, todo lo que hace es inicializar

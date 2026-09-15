@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"net/http"
+
+	"github.com/justinas/nosurf"
 )
 
 func (app *application) recoverPanic(next http.Handler) http.Handler {
@@ -74,4 +76,44 @@ func commonHeaders(next http.Handler) http.Handler {
 		// Cede el control al siguiente handler de la cadena.
 		next.ServeHTTP(w, r)
 	})
+}
+
+func (app *application) requireAuthentication(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !app.isAuthenticated(r) {
+			http.Redirect(w, r, "/user/login", http.StatusSeeOther)
+			return
+		}
+
+		// configure el encabezado "Cache-Control: no-store" para que las páginas
+		// que requieren autenticación no se almacenen en la caché del navegador del usuario (o
+		// en otra caché intermedia).
+		w.Header().Add("Cache-Control", "no-store")
+		// And call the next handler in the chain.
+		next.ServeHTTP(w, r)
+	})
+}
+
+// noSurf es un middleware que protege contra ataques CSRF (Cross-Site Request
+// Forgery) usando el paquete justinas/nosurf. Se coloca en la cadena de
+// middleware dinámico para que todas las rutas que procesan formularios
+// queden cubiertas.
+func noSurf(next http.Handler) http.Handler {
+	// nosurf.New envuelve el siguiente handler y devuelve un *CSRFHandler
+	// (que a su vez implementa http.Handler). En cada petición no-segura
+	// (POST, PUT, PATCH, DELETE) verifica que el token CSRF del formulario
+	// coincida con el de la cookie antes de llamar a next; si no coinciden,
+	// responde 400 y no ejecuta el handler. Las peticiones seguras
+	// (GET, HEAD, OPTIONS, TRACE) pasan sin verificación.
+	csrfHandler := nosurf.New(next)
+
+	// SetBaseCookie configura los atributos de la cookie donde nosurf guarda
+	// su token CSRF (cookie "csrf_token"), no la cookie de sesión.
+	csrfHandler.SetBaseCookie(http.Cookie{
+		HttpOnly: true, // impide que JavaScript lea la cookie (mitiga robo de token vía XSS)
+		Path:     "/",  // la cookie aplica a todas las rutas del sitio
+		Secure:   true, // la cookie solo se envía sobre HTTPS
+	})
+
+	return csrfHandler
 }

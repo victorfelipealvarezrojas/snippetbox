@@ -53,8 +53,9 @@ func newTemplateCache() (map[string]*template.Template, error) {
 			"html/partials/*.tmpl.html",
 			page,
 		}
-		// Use ParseFS() instead of ParseFiles() to parse the template files
-		// from the ui.Files embedded filesystem.
+
+		// Utilice ParseFS() en lugar de ParseFiles() para analizar los archivos de plantilla
+		// del sistema de archivos integrado ui.Files.
 		ts, err := template.New(name).Funcs(functions).ParseFS(ui.Files, patterns...)
 		if err != nil {
 			return nil, err

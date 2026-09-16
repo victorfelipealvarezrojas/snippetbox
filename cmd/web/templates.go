@@ -2,10 +2,12 @@ package main
 
 import (
 	"html/template"
+	"io/fs"
 	"path/filepath"
 	"time"
 
 	"github.com/valvarez/snippetbox/internal/models"
+	"github.com/valvarez/snippetbox/ui"
 )
 
 type templateData struct {
@@ -32,33 +34,33 @@ var functions = template.FuncMap{
 
 func newTemplateCache() (map[string]*template.Template, error) {
 	cache := map[string]*template.Template{}
-	pages, err := filepath.Glob("./ui/html/pages/*.tmpl.html")
+
+	// Usamos fs.Glob() para obtener una porción de todas las rutas de archivo en el sistema de archivos integrado ui.Files que coincidan con el patrón 'html/pages/*.tmpl'. Esto, esencialmente,
+	// nos da una porción de todas las plantillas de página para la aplicación, igual que antes.
+	// pages, err := filepath.Glob("./ui/html/pages/*.tmpl.html") (remplazo)
+	pages, err := fs.Glob(ui.Files, "html/pages/*.tmpl.html")
+
 	if err != nil {
 		return nil, err
 	}
 
 	for _, page := range pages {
 		name := filepath.Base(page)
-
-		// El objeto template.FuncMap debe registrarse en el conjunto de plantillas antes de llamar al método ParseFiles().
-		// Esto significa que debemos usar template.New() para crear un conjunto de plantillas vacío,
-		// usar el método Funcs() para registrar el objeto template.FuncMap y, a continuación, analizar el archivo de forma habitual.
-		ts, err := template.New(name).Funcs(functions).ParseFiles("./ui/html/base.tmpl.html")
+		// Create a slice containing the filepath patterns for the templates we
+		// want to parse.
+		patterns := []string{
+			"html/base.tmpl.html",
+			"html/partials/*.tmpl.html",
+			page,
+		}
+		// Use ParseFS() instead of ParseFiles() to parse the template files
+		// from the ui.Files embedded filesystem.
+		ts, err := template.New(name).Funcs(functions).ParseFS(ui.Files, patterns...)
 		if err != nil {
 			return nil, err
 		}
-		// Call ParseGlob() *on this template set* to add any partials.
-		ts, err = ts.ParseGlob("./ui/html/partials/*.tmpl.html")
-		if err != nil {
-			return nil, err
-		}
-		// Call ParseFiles() *on this template set* to add the page template.
-		ts, err = ts.ParseFiles(page)
-		if err != nil {
-			return nil, err
-		}
-
 		cache[name] = ts
 	}
+
 	return cache, nil
 }
